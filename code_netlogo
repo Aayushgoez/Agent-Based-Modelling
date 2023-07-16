@@ -1,0 +1,218 @@
+globals [
+  num           ; number of agents
+  ;;s             ; environment size in meters
+  rad           ; collision radius
+  sight         ; neighbor search range
+  maxF          ; maximum force/acceleration
+  circles       ; list of agent turtles
+  v             ; list of agent velocities
+  gv            ; list of agent goal velocities
+  nbr           ; list of agent neighbor lists
+  nd            ; list of agent neighbor distance lists
+ ;  listvelocity;
+  yo;
+  zo;
+  listgv;
+  he;
+  te;
+  r
+  rx
+  ry
+]
+
+to setup
+  clear-all
+  reset-ticks
+  set num 18
+  set rad 0.2
+  set sight 7
+  set maxF 999
+  set r []
+  set v []
+  set gv []
+  let i max-pxcor - 1
+  let j max-pycor - 1
+  create-turtles num [
+    set color white
+    set size 2
+    set shape "circle"
+    setxy random-float i random-float j
+    set heading random 360
+   ; set listvelocity[];
+    set rx [pxcor] of self
+    set ry [pycor] of self
+    set yo 1.5 * (item (0) (heading-to-vector heading))
+    set zo 1.5 * (item (1) (heading-to-vector heading))
+    let vo (list yo zo)
+    set he 2 * (item (0) (heading-to-vector heading))
+    set te 2 * (item (1) (heading-to-vector heading))
+    let gvo (list he te)
+    let ro (list rx ry)
+    print ro
+    print vo
+    print gvo
+    ifelse (who = 0) [ set color red ] [ set color white ]
+    let r1 lput ro r
+    let v1 lput vo v
+    let gv1 lput gvo gv
+    set r r1
+    set v v1
+    set gv gv1
+  ]
+  set circles turtles
+  print r 
+  print v
+  print gv
+end
+
+
+to-report heading-to-vector [angle]
+  let x-component sin angle * 1.0  ; Multiply by desired magnitude
+  let y-component cos angle * -1.0 ; Multiply by desired magnitude
+  report (list x-component y-component)
+end
+
+to-report subtract [pa pb]
+  let p []
+  let xpb ( item 0 pb)
+  let xpa ( item 0 pa)
+  let xp xpb - xpa 
+  let ypb ( item 1 pb)
+  let ypa ( item 1 pa)
+  let yp ypb - ypa 
+  set p (list xp yp)
+  report p
+end
+
+to-report multiplyvector [pa pb]
+  ;let p []
+  let x1 item 0 pa
+  let x2 item 0 pb
+  let y1 item 1 pa
+  let y2 item 1 pb
+  let p (x1 * x2) + (y1 * y2)
+  report p
+end
+
+to-report multiplyscalar [f a]
+  let h []
+  let f1 (item 0 f) * a
+  let f2 (item 1 f) * a
+  set h (list f1 f2)
+  report h
+end
+  
+to-report dE [ pa pb va vb ra rb ]
+  let B 1.5  ; parameter
+  let m 2.0  ; parameter
+  let t0 3   ; parameter
+  let infty 999
+  let maxt 999
+  let p []
+  set p subtract pa pb
+  let u []
+  set u subtract vb va
+  let radius ra + rb
+  let px item 0 p
+  let py item 1 p
+  let dist sqrt (px ^ 2 + py ^ 2)
+  if (radius > dist) [set radius 0.99 * dist]
+  let a multiplyvector u u 
+  let d multiplyvector p u
+  let j multiplyvector p p
+  let c j - radius * radius
+  let discr d * d - a * c
+  if (discr < 0) or (a < 0.001 and a > (0 - 0.001)) [ report (list 0 0) ]
+  set discr sqrt (discr)
+  let t1 (d - discr) / a
+  let t t1
+  if (t < 0) [report (list 0 0)]
+  if (t > maxt) [report (list 0 0)]
+  let g B * exp(- t / t0) * (u - (u * d - p * a) / (discr)) / (a * t ^ m) * (m / t + 1 / t0)
+  report g
+end
+
+to-report addscalar [f a]
+  let h []
+  let f1 item 0 f 
+  let h1 f1 + a
+  let f2 item 1 f
+  let h2 f2 + a
+  set h (list h1 h2)
+  report h
+end
+
+to-report addvector [f a]
+  let h []
+  let f1 item 0 f 
+  let e1 item 0 a
+  let f2 item 1 f 
+  let e2 item 1 a
+  let h1 f1 + e1
+  let h2 f2 + e2
+  set h (list h1 h2)
+end
+
+to updt [ dt ]
+  set nbr []
+  set nd []
+  ask turtles [
+    let F (list 0 0 )
+    set nbr lput [] nbr
+    set nd lput [] nd
+    let this self
+    let mx [pxcor] of this
+    let my [pycor] of this
+    let pa (list mx my) 
+    let indx position pa r
+    print pa
+    print indx
+    ;let turtles-positions map [t -> list [pxcor] of t [pycor] of t] r
+    ;let turtle-position [pxcor] of self [pycor] of self
+    ;let indx position turtle-position turtles-positions
+    let va item indx v
+    ask other turtles [
+      let other-turtle self
+      let d distance myself
+      if d <= sight [
+        set nbr lput who nbr
+        set nd lput d nd
+        let nx [pxcor] of other-turtle
+        let ny [pycor] of other-turtle
+        let pb (list nx ny)
+        let idx position pb r
+        let vb item idx v
+        let ra rad
+        let rb rad
+        let frc dE pa pb va vb ra rb
+        set F addscalar F frc
+        set nbr lput who nbr
+        set nd lput d nd
+      ]
+    ]
+   let thisv va
+   let thisg item indx gv
+    let k subtract thisv thisg
+   set F addvector F k
+    let z multiplyscalar F dt
+   let nextv addvector thisv z
+   let q multiplyscalar nextv dt
+   let nextp addvector pa q
+    ;if abs nextv > maxF [set nextv maxF * (nextv / abs nextv)]
+    ;set thisv nextv
+    let v2 replace-item indx v nextv
+    set v v2
+    set this pcolor + (50 * (nextv - thisv) / maxF)
+    setxy item 0 nextp item 1 nextp
+    let x3 item 0 nextp
+    let y3 item 1 nextp
+    let xy1 (list x3 y3)
+    let r2 replace-item indx r xy1
+    set r r2
+  ]
+end
+
+to go
+   updt 0.1
+   tick
+end
